@@ -28,6 +28,10 @@ cat > usage.xml <<XML
 </map>
 XML
 adb shell "run-as $PKG sh -c 'mkdir -p shared_prefs && cat > shared_prefs/usage.xml'" < usage.xml
+adb shell "run-as $PKG cat shared_prefs/usage.xml" | head -3
+# mata o processo de novo para o app ler os dados do disco ao abrir
+adb shell am force-stop $PKG
+sleep 1
 adb shell am start -W -n $PKG/.MainActivity
 sleep 12
 adb shell input swipe 500 1500 500 300 300
@@ -36,6 +40,8 @@ adb shell input swipe 500 1500 500 300 300
 sleep 4
 adb exec-out screencap -p > screen-2.png
 adb logcat -d > logcat.txt
+echo "=== tela (texto visível) ==="
+adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 && adb shell cat /sdcard/ui.xml | grep -o 'text="[^"]*"' | grep -v 'text=""' | head -60
 echo "================ FALHAS ================"
 grep -n -A 40 "FATAL EXCEPTION" logcat.txt || echo "nenhuma FATAL EXCEPTION"
 grep -n -B2 -A 25 "ANR in $PKG" logcat.txt || true
