@@ -34,6 +34,11 @@ function detectApp(loc) {
   return null;
 }
 
+/** O usuário pode desligar a contagem de apps específicos. */
+function isAppEnabled(all, name) {
+  return !(all.disabledApps || []).includes(name);
+}
+
 function colorOf(name) {
   const a = APPS.find((x) => x.name === name);
   return a ? a.color : "#8b98ae";

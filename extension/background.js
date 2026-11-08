@@ -42,6 +42,8 @@ async function restoreSession() {
 }
 
 async function onTick(app, dt) {
+  const { disabledApps = [] } = await chrome.storage.local.get("disabledApps");
+  if (disabledApps.includes(app)) return; // contagem desligada para este app
   await restoreSession();
   const now = Date.now();
   // Duas abas tocando ao mesmo tempo não contam em dobro.
@@ -110,6 +112,20 @@ async function setPaused(value) {
     chrome.notifications.clear(NOTIF_ID);
   }
 }
+
+// App desligado no meio da sessão: encerra na hora.
+chrome.storage.onChanged.addListener((ch) => {
+  if (!ch.disabledApps) return;
+  const off = ch.disabledApps.newValue || [];
+  enqueue(async () => {
+    if (session && off.includes(session.app)) {
+      session = null;
+      await chrome.storage.local.set({ live: null });
+      chrome.action.setBadgeText({ text: "" });
+      chrome.notifications.clear(NOTIF_ID);
+    }
+  });
+});
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "tick" && typeof msg.app === "string") {

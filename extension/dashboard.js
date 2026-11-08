@@ -181,7 +181,7 @@ function rankHTML() {
         <span class="name"><span class="dot" style="background:${a.color}"></span>${a.name}</span>
         <span class="val num">${hm(m)}</span>
         <div class="meta">${stackBarHTML([{ name: a.name, color: a.color, v: m }], max, 4)}
-          <span class="num">${share}% · hoje ${hm(S.todayByApp[a.name])} · total ${hm(S.allByApp[a.name])}</span></div>
+          <span class="num">${share}% · hoje ${hm(S.todayByApp[a.name])} · total ${hm(S.allByApp[a.name])}${isAppEnabled(ALL, a.name) ? "" : " · desligado"}</span></div>
       </div>`;
     }).join("")}
   </section>`;
@@ -203,10 +203,24 @@ function daysHTML() {
   </section>`;
 }
 
+function appsHTML() {
+  return `<section class="hud apps">
+    <div class="label"><b>07</b> Apps monitorados</div>
+    <p class="t2" style="font-size:12px;margin:0 0 12px">Desligue um app para parar de contar o tempo dele. O histórico já registrado é mantido.</p>
+    <div class="apps-grid">${APPS.map((a) => {
+      const on = isAppEnabled(ALL, a.name);
+      return `<button class="app-toggle ${on ? "on" : ""}" data-action="app-toggle" data-app="${a.name}" aria-pressed="${on}">
+        <span class="dot" style="background:${on ? a.color : "var(--muted)"}"></span>
+        <span class="nm">${a.name}</span>
+        <span class="sw"><i></i>${on ? "CONTANDO" : "DESLIGADO"}</span></button>`;
+    }).join("")}</div>
+  </section>`;
+}
+
 function sysHTML() {
   const notif = ALL.notifications !== false;
   return `<section class="hud sys" style="--hud-c: var(--line-hi)">
-    <div class="label"><b>07</b> Sistema</div>
+    <div class="label"><b>08</b> Sistema</div>
     <div class="sys-row">
       <label class="switch"><input type="checkbox" data-action="notif" ${notif ? "checked" : ""}> Notificação ao começar um vídeo</label>
       <span class="t2" style="font-size:12px">Atalho pausar/retomar: <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd></span>
@@ -225,7 +239,7 @@ function renderTopStatus() {
 
 async function render() {
   await load();
-  app.innerHTML = heroHTML() + totalsHTML() + calHTML() + timelineHTML() + rankHTML() + daysHTML() + sysHTML();
+  app.innerHTML = heroHTML() + totalsHTML() + calHTML() + timelineHTML() + rankHTML() + daysHTML() + appsHTML() + sysHTML();
   drawChart();
   renderTopStatus();
 }
@@ -254,6 +268,13 @@ app.addEventListener("click", async (e) => {
   if (a) {
     const act = a.dataset.action;
     if (act === "toggle-pause") { await togglePause(); }
+    else if (act === "app-toggle") {
+      const off = new Set(ALL.disabledApps || []);
+      const name = a.dataset.app;
+      if (off.has(name)) off.delete(name); else off.add(name);
+      await chrome.storage.local.set({ disabledApps: [...off] });
+      render();
+    }
     else if (act === "prev" || act === "next") {
       const dt = new Date(year, month - 1 + (act === "prev" ? -1 : 1), 1);
       year = dt.getFullYear(); month = dt.getMonth() + 1;
@@ -287,7 +308,7 @@ window.addEventListener("resize", drawChart);
 // Atualizações ao vivo
 let lastFull = Date.now();
 chrome.storage.onChanged.addListener((ch) => {
-  if ("paused" in ch) { render(); return; }
+  if ("paused" in ch || "disabledApps" in ch) { render(); return; }
   if (Date.now() - lastFull > 10_000 && Object.keys(ch).some((k) => k.startsWith("t|"))) { lastFull = Date.now(); render(); }
 });
 setInterval(async () => {

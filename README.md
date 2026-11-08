@@ -12,9 +12,11 @@ O painel (visual HUD, igual no app e na extensão) mostra:
 4. **Linha do tempo** — barras empilhadas por app, uma por dia;
 5. **Ranking do mês** — apps ordenados, com % do mês, hoje e total;
 6. **Registro diário** — cada dia com total e divisão por app;
-7. **Sistema** — opções.
+7. **Apps monitorados** — liga/desliga a contagem de cada serviço;
+8. **Sistema** — opções.
 
-A contagem pode ser **pausada** pelo botão do app ou pelo botão da notificação.
+A contagem pode ser **pausada** pelo botão do app ou pelo botão da notificação, e cada app pode ser
+**desligado** individualmente em *Apps monitorados* (o histórico já registrado é mantido).
 
 ## Como baixar
 **Releases** → baixe o `ListeningTime-vX.Y.Z.apk` mais recente → instale.

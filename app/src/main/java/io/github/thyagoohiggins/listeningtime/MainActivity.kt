@@ -119,6 +119,7 @@ class MainActivity : Activity() {
         timelinePanel(s)
         rankPanel(s)
         logPanel(s)
+        appsPanel()
         systemPanel()
 
         scroll.post { scroll.scrollTo(0, y) }
@@ -387,7 +388,8 @@ class MainActivity : Activity() {
                 head.addView(text(Tracker.hm(m), 13f, Ui.TEXT, bold = true))
                 col.addView(head)
                 col.addView(StackBar(this, 4f).apply { segments = listOf(a.color to m); maxValue = max }, lp(top = 6))
-                col.addView(text("$share% · hoje ${Tracker.hm(s.todayByApp[a.name] ?: 0)} · total ${Tracker.hm(s.allByApp[a.name] ?: 0)}",
+                val off = if (AppSettings.isAppEnabled(this, a.name)) "" else " · desligado"
+                col.addView(text("$share% · hoje ${Tracker.hm(s.todayByApp[a.name] ?: 0)} · total ${Tracker.hm(s.allByApp[a.name] ?: 0)}$off",
                     10f, Ui.MUTED), lp(top = 4))
                 r.addView(col, weight())
                 p.addView(r)
@@ -426,10 +428,49 @@ class MainActivity : Activity() {
         }
     }
 
-    // ---- 07 sistema / permissões ----------------------------------------
+    // ---- 07 apps monitorados --------------------------------------------
+
+    private fun appsPanel() {
+        panel("07", "APPS MONITORADOS") { p ->
+            p.addView(text("Desligue um app para parar de contar o tempo dele. O histórico já registrado é mantido.",
+                11f, Ui.TEXT2), lp(bottom = 6))
+            StreamingApps.apps.forEachIndexed { i, a ->
+                val on = AppSettings.isAppEnabled(this, a.name)
+                val r = hbox().apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, dp(10), 0, dp(10))
+                    setOnClickListener { AppSettings.setAppEnabled(this@MainActivity, a.name, !on); render() }
+                    contentDescription = "${a.name}: ${if (on) "contando" else "desligado"}. Toque para alterar."
+                }
+                r.addView(dot(if (on) a.color else Ui.MUTED))
+                r.addView(text(a.name, 13f, if (on) Ui.TEXT else Ui.MUTED, bold = true), weight(left = 10))
+                r.addView(toggle(on))
+                p.addView(r)
+                if (i < StreamingApps.apps.lastIndex) p.addView(rule())
+            }
+        }
+    }
+
+    /** Chave liga/desliga no estilo HUD. */
+    private fun toggle(on: Boolean): View {
+        val box = hbox().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            background = GradientDrawable().apply {
+                setColor(if (on) 0x1A3DD6F5 else 0); setStroke(dp(1), if (on) Ui.ACCENT else Ui.LINE_HI)
+            }
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+        }
+        box.addView(View(this).apply { setBackgroundColor(if (on) Ui.ACCENT else Ui.MUTED) },
+            LinearLayout.LayoutParams(dp(8), dp(8)))
+        box.addView(text(if (on) "CONTANDO" else "DESLIGADO", 10f, if (on) Ui.ACCENT else Ui.MUTED, bold = true, spacing = 0.12f),
+            lp(left = 8).apply { width = ViewGroup.LayoutParams.WRAP_CONTENT })
+        return box
+    }
+
+    // ---- 08 sistema / permissões ----------------------------------------
 
     private fun systemPanel() {
-        panel("07", "SISTEMA", bracket = Ui.LINE_HI) { p ->
+        panel("08", "SISTEMA", bracket = Ui.LINE_HI) { p ->
             @Suppress("DEPRECATION")
             val sw = Switch(this).apply {
                 text = "Contar com o app aberto na tela (para apps que não informam a reprodução)"

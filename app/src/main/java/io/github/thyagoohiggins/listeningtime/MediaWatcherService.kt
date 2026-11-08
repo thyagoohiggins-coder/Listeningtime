@@ -94,13 +94,15 @@ class MediaWatcherService : NotificationListenerService() {
         if (!getSystemService(PowerManager::class.java).isInteractive) return null
         for (c in controllers) {
             val pkg = c.packageName
-            if (StreamingApps.isTarget(pkg) && c.playbackState?.state == PlaybackState.STATE_PLAYING) {
+            if (StreamingApps.isTarget(pkg) && c.playbackState?.state == PlaybackState.STATE_PLAYING &&
+                AppSettings.isAppEnabled(this, StreamingApps.nameOf(pkg))
+            ) {
                 return pkg
             }
         }
         if (AppSettings.foregroundFallback(this)) {
             val f = fg.current()
-            if (StreamingApps.isTarget(f)) return f
+            if (f != null && StreamingApps.isTarget(f) && AppSettings.isAppEnabled(this, StreamingApps.nameOf(f))) return f
         }
         return null
     }
@@ -119,6 +121,9 @@ class MediaWatcherService : NotificationListenerService() {
         if (countTime) lastTick = now
         val paused = PauseState.isPaused(this)
         livePaused = paused
+
+        // App desligado no meio da sessão: encerra na hora (sem esperar a carência de 1 min).
+        activePkg?.let { if (!AppSettings.isAppEnabled(this, StreamingApps.nameOf(it))) endSession() }
 
         val pkg = playingPackage()
         if (pkg != null) {
