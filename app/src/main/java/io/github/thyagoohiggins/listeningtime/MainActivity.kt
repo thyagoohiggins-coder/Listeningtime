@@ -121,19 +121,52 @@ class MainActivity : Activity() {
         val cur = if (isCurrentMonth()) s else Tracker.stats(this, now.get(Calendar.YEAR), now.get(Calendar.MONTH) + 1)
         if (selectedDay !in 1..s.daysInMonth) selectedDay = 1
 
-        header()
-        permissionsPanel()
-        todayPanel(cur)
-        totalsPanel(s)
-        calendarPanel(s)
-        timelinePanel(s)
-        rankPanel(s)
-        logPanel(s)
-        appsPanel()
-        syncPanel()
-        systemPanel()
+        safe("cabeçalho") { header() }
+        safe("erro anterior") { crashPanel() }
+        safe("permissões") { permissionsPanel() }
+        safe("hoje") { todayPanel(cur) }
+        safe("acumulado") { totalsPanel(s) }
+        safe("calendário") { calendarPanel(s) }
+        safe("linha do tempo") { timelinePanel(s) }
+        safe("ranking") { rankPanel(s) }
+        safe("registro diário") { logPanel(s) }
+        safe("apps monitorados") { appsPanel() }
+        safe("sincronização") { syncPanel() }
+        safe("sistema") { systemPanel() }
 
         scroll.post { scroll.scrollTo(0, y) }
+    }
+
+    /** Se uma seção falhar, mostra o erro no lugar dela em vez de fechar o app. */
+    private fun safe(name: String, block: () -> Unit) {
+        val before = content.childCount
+        try {
+            block()
+        } catch (e: Throwable) {
+            while (content.childCount > before) content.removeViewAt(content.childCount - 1)
+            runCatching { CrashLog.save(this, e) }
+            content.addView(HudPanel(this, DANGER).apply {
+                addView(text("ERRO NA SEÇÃO \"${name.uppercase()}\"", 11f, DANGER, bold = true, spacing = 0.14f))
+                addView(text("${e.javaClass.simpleName}: ${e.message}", 11f, Ui.TEXT2), lp(top = 6))
+                addView(text("Veja os detalhes no topo do painel na próxima abertura e me envie.", 10f, Ui.MUTED), lp(top = 6))
+            }, lp(top = 14))
+        }
+    }
+
+    /** Mostra o erro da última falha (se houver), com opção de copiar. */
+    private fun crashPanel() {
+        val log = CrashLog.read(this) ?: return
+        panel("!!", "O APP TEVE UM ERRO", bracket = DANGER) { p ->
+            p.addView(text("Copie e envie este texto para corrigir o problema.", 11f, Ui.TEXT2), lp(bottom = 8))
+            p.addView(text(log.take(1500), 9f, Ui.MUTED).apply { setTextIsSelectable(true) })
+            val b = hbox()
+            b.addView(outlineButton("COPIAR ERRO") {
+                getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Erro Listening Time", log))
+                toast("Erro copiado")
+            }, weight())
+            b.addView(outlineButton("DISPENSAR") { CrashLog.clear(this); render() }, weight(left = 8))
+            p.addView(b, lp(top = 12))
+        }
     }
 
     // ---- cabeçalho ------------------------------------------------------
