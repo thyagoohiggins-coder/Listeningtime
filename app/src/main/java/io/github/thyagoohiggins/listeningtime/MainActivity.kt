@@ -88,6 +88,8 @@ class MainActivity : Activity() {
         lastLive = liveKey()
         handler.postDelayed(refresher, 1000)
         SyncManager.maybeSync(this) { if (currentFocus !is EditText) render() }
+        Watchdog.ensureRunning(this)
+        Watchdog.schedule(this)
     }
 
     override fun onPause() {
@@ -584,7 +586,7 @@ class MainActivity : Activity() {
         panel("09", "SISTEMA", bracket = Ui.LINE_HI) { p ->
             @Suppress("DEPRECATION")
             val sw = Switch(this).apply {
-                text = "Contar com o app aberto na tela (para apps que não informam a reprodução)"
+                text = "Contar com o app aberto na tela mesmo sem som (menos preciso: conta também o tempo nos menus)"
                 setTextColor(Ui.TEXT2); textSize = 12f; typeface = Ui.MONO
                 isChecked = AppSettings.foregroundFallback(this@MainActivity)
                 setOnCheckedChangeListener { _, v ->
@@ -603,6 +605,23 @@ class MainActivity : Activity() {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(RELEASES_URL)))
             }, weight(left = 8))
             p.addView(btns, lp(top = 14))
+            // diagnóstico: o que o monitor está enxergando agora
+            p.addView(dashedRule(), lp(top = 16, bottom = 12))
+            p.addView(text("DIAGNÓSTICO", 10f, Ui.TEXT2, bold = true, spacing = 0.16f))
+            val svc = MediaWatcherService.instance
+            val lines = mutableListOf(
+                "Monitor: " + when {
+                    !MediaWatcherService.isEnabled(this) -> "sem permissão de acesso a notificações"
+                    svc == null -> "desconectado (toque em REINICIAR MONITOR)"
+                    else -> "conectado"
+                },
+                "Bateria sem restrição: " + if (getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)) "sim" else "não",
+            )
+            svc?.let { lines += it.diagnostics() }
+            for (l in lines) p.addView(text(l, 11f, Ui.TEXT2), lp(top = 6))
+            p.addView(text("Abra o vídeo, volte aqui (ou use a tela dividida) e toque em ATUALIZAR para ver o que está sendo detectado.",
+                10f, Ui.MUTED), lp(top = 8))
+            p.addView(outlineButton("ATUALIZAR DIAGNÓSTICO") { render() }, lp(top = 10))
             p.addView(text("v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · dados guardados só neste aparelho", 10f, Ui.MUTED), lp(top = 12))
         }
     }
@@ -612,7 +631,8 @@ class MainActivity : Activity() {
         val notifOn = Build.VERSION.SDK_INT < 33 ||
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         val batteryOn = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
-        if (listenerOn && notifOn && batteryOn) return
+        val usageOn = ForegroundDetector.hasPermission(this)
+        if (listenerOn && notifOn && batteryOn && usageOn) return
 
         panel("!!", "CONFIGURAÇÃO PENDENTE", bracket = Ui.WARN) { p ->
             if (!listenerOn) {
@@ -631,6 +651,10 @@ class MainActivity : Activity() {
             }
             if (!batteryOn) permRow(p, "Sem restrição de bateria", "Evita que o sistema feche o contador.") {
                 startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+            }
+            if (!usageOn) permRow(p, "Acesso ao uso (recomendado)",
+                "Detecta vídeos de apps que não avisam o sistema que estão tocando (app na tela + áudio).") {
+                startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
             }
         }
     }

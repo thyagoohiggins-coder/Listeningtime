@@ -8,6 +8,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Icon
+import android.media.AudioManager
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
@@ -90,21 +91,73 @@ class MediaWatcherService : NotificationListenerService() {
     }
 
     /** Pacote de streaming que está tocando agora, ou null. */
+    /** Como o vídeo foi detectado no último segundo (para o diagnóstico). */
+    @Volatile var lastMethod: String = "—"
+        private set
+
+    private fun enabledTarget(pkg: String?) =
+        pkg != null && StreamingApps.isTarget(pkg) && AppSettings.isAppEnabled(this, StreamingApps.nameOf(pkg))
+
+    /**
+     * Pacote de streaming que está tocando agora, ou null. Três formas de detectar:
+     * 1) sessão de mídia do app em "tocando" (a mais precisa);
+     * 2) app de streaming na tela + áudio de mídia ativo (para apps que não informam a sessão);
+     * 3) opcional: app de streaming na tela, mesmo sem áudio.
+     * (2) e (3) precisam do "Acesso ao uso".
+     */
     private fun playingPackage(): String? {
-        if (!getSystemService(PowerManager::class.java).isInteractive) return null
+        if (!getSystemService(PowerManager::class.java).isInteractive) { lastMethod = "tela desligada"; return null }
         for (c in controllers) {
             val pkg = c.packageName
-            if (StreamingApps.isTarget(pkg) && c.playbackState?.state == PlaybackState.STATE_PLAYING &&
-                AppSettings.isAppEnabled(this, StreamingApps.nameOf(pkg))
-            ) {
-                return pkg
+            if (enabledTarget(pkg) && c.playbackState?.state == PlaybackState.STATE_PLAYING) {
+                lastMethod = "sessão de mídia"; return pkg
             }
         }
-        if (AppSettings.foregroundFallback(this)) {
-            val f = fg.current()
-            if (f != null && StreamingApps.isTarget(f) && AppSettings.isAppEnabled(this, StreamingApps.nameOf(f))) return f
+        val f = fg.current()
+        if (enabledTarget(f)) {
+            if (getSystemService(AudioManager::class.java).isMusicActive) { lastMethod = "app na tela + áudio"; return f }
+            if (AppSettings.foregroundFallback(this)) { lastMethod = "app na tela"; return f }
         }
+        lastMethod = "nada tocando"
         return null
+    }
+
+    /** Texto do diagnóstico mostrado no painel. */
+    fun diagnostics(): List<String> {
+        val out = mutableListOf<String>()
+        val sessions = controllers.map { c ->
+            val st = when (c.playbackState?.state) {
+                PlaybackState.STATE_PLAYING -> "tocando"
+                PlaybackState.STATE_PAUSED -> "pausado"
+                PlaybackState.STATE_BUFFERING -> "carregando"
+                PlaybackState.STATE_STOPPED -> "parado"
+                null -> "sem estado"
+                else -> "estado ${c.playbackState?.state}"
+            }
+            val name = if (StreamingApps.isTarget(c.packageName)) StreamingApps.nameOf(c.packageName) else c.packageName
+            "$name: $st"
+        }
+        out += "Sessões de mídia: " + (sessions.ifEmpty { listOf("nenhuma") }.joinToString(" · "))
+        out += "App na tela: " + if (!ForegroundDetector.hasPermission(this)) "sem \"Acesso ao uso\""
+            else (fg.current()?.let { if (StreamingApps.isTarget(it)) StreamingApps.nameOf(it) else it } ?: "desconhecido")
+        out += "Áudio de mídia ativo: " + if (getSystemService(AudioManager::class.java).isMusicActive) "sim" else "não"
+        out += "Detecção agora: $lastMethod"
+        out += "Última detecção: " + if (lastDetectedAt == 0L) "nenhuma desde que o monitor iniciou"
+            else "$lastDetected, há ${(System.currentTimeMillis() - lastDetectedAt) / 1000} s"
+        return out
+    }
+
+    private var lastRefresh = 0L
+    private var lastDetected = ""
+    private var lastDetectedAt = 0L
+
+    /** Recarrega a lista de sessões a cada 10 s, caso o aviso do sistema tenha se perdido. */
+    private fun refreshSessions(now: Long) {
+        if (now - lastRefresh < 10_000) return
+        lastRefresh = now
+        runCatching {
+            controllers = msm?.getActiveSessions(ComponentName(this, MediaWatcherService::class.java)) ?: controllers
+        }
     }
 
     /** Chamado quando o usuário pausa/retoma: atualiza a notificação na hora. */
@@ -122,7 +175,7 @@ class MediaWatcherService : NotificationListenerService() {
         val paused = PauseState.isPaused(this)
         livePaused = paused
 
-        if (countTime) SyncManager.maybeSync(this)
+        if (countTime) { SyncManager.maybeSync(this); refreshSessions(now) }
 
         // App desligado no meio da sessão: encerra na hora (sem esperar a carência de 1 min).
         activePkg?.let { if (!AppSettings.isAppEnabled(this, StreamingApps.nameOf(it))) endSession() }
@@ -146,6 +199,8 @@ class MediaWatcherService : NotificationListenerService() {
                 Tracker.add(this, pkg, whole)
             }
             val name = StreamingApps.nameOf(pkg)
+            lastDetected = "$name via $lastMethod"
+            lastDetectedAt = System.currentTimeMillis()
             liveApp = name
             liveBase = now - sessionSeconds * 1000
             updateNotification(name, videoPlaying = true, paused = paused)

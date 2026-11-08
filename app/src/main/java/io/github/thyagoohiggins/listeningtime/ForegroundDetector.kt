@@ -9,7 +9,8 @@ import android.os.Process
 /** Descobre qual app está na tela usando o "Acesso ao uso" (opcional). */
 class ForegroundDetector(private val ctx: Context) {
     private val usm = ctx.getSystemService(UsageStatsManager::class.java)
-    private var lastQuery = System.currentTimeMillis() - 60 * 60 * 1000L
+    // olha 12 h para trás na primeira consulta (caso o app já estivesse aberto antes do monitor iniciar)
+    private var lastQuery = System.currentTimeMillis() - 12 * 60 * 60 * 1000L
     private var foreground: String? = null
 
     @Suppress("DEPRECATION")
