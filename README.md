@@ -86,12 +86,18 @@ apagado também nos outros aparelhos.
 O servidor fica em `sync-worker/` (Cloudflare Worker + Durable Object) e roda no plano gratuito.
 Cada aparelho envia só o que ele contou, então nada é somado em dobro.
 
+**Jeito mais fácil:** no Cloudflare, *Workers & Pages → Create → Import a repository*, escolha este
+repositório, deixe o nome `listeningtime`, *Build command* vazio, *Deploy command* `npx wrangler deploy`
+e clique em **Deploy** (o `wrangler.toml` da raiz já aponta para `sync-worker/`). Depois pule para o passo 5.
+
+**Ou pelo GitHub Actions:**
+
 1. Crie uma conta no [Cloudflare](https://dash.cloudflare.com/sign-up). Em **Workers & Pages**, abra a página uma
    vez para criar seu subdomínio `*.workers.dev`. Anote o **Account ID** (aparece na lateral dessa página).
 2. Em **My Profile → API Tokens → Create Token**, use o modelo **Edit Cloudflare Workers** e copie o token.
 3. No GitHub: **Settings → Secrets and variables → Actions**, crie `CLOUDFLARE_API_TOKEN` e `CLOUDFLARE_ACCOUNT_ID`.
 4. Em **Actions → Publicar servidor de sincronização (Cloudflare) → Run workflow**. No log aparece o endereço,
-   algo como `https://listeningtime-sync.SEU-USUARIO.workers.dev`.
+   algo como `https://listeningtime.SEU-USUARIO.workers.dev`.
 5. Num aparelho, em **08 · Sincronização**, cole esse endereço, toque em **Gerar link** e depois em **Salvar**.
    Use **Copiar** e cole o mesmo link nos outros aparelhos (celular e navegadores) → **Salvar**.
 

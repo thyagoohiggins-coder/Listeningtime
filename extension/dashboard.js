@@ -239,9 +239,9 @@ function syncHTML() {
     <div class="label"><b>08</b> Sincronização</div>
     ${status}
     <p class="t2" style="font-size:12px;margin:12px 0">Cole aqui o <b>link de sincronização</b> (o mesmo no celular e no navegador).
-      Para criar um, cole o endereço do seu servidor Cloudflare (ex.: <code>https://listeningtime-sync.SEU-USUARIO.workers.dev</code>) e toque em <i>Gerar link</i>.</p>
+      Para criar um, cole o endereço do seu servidor Cloudflare (ex.: <code>https://listeningtime.SEU-USUARIO.workers.dev</code>) e toque em <i>Gerar link</i>.</p>
     <div class="sync-form">
-      <input id="sync-link" type="text" spellcheck="false" placeholder="https://listeningtime-sync....workers.dev/#CODIGO" value="${link}">
+      <input id="sync-link" type="text" spellcheck="false" placeholder="https://listeningtime....workers.dev/#CODIGO" value="${link}">
       <input id="sync-name" type="text" spellcheck="false" placeholder="Nome deste aparelho" value="${(cfg && cfg.name) || "Navegador"}">
     </div>
     <div class="sys-row" style="margin-top:10px">

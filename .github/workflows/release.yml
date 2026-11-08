@@ -3,7 +3,7 @@ name: Build e Release do APK
 on:
   push:
     branches: ["**"]
-    paths-ignore: ["**.md", "sync-worker/**", ".github/workflows/deploy-sync.yml"]
+    paths-ignore: ["**.md", "sync-worker/**", "wrangler.toml", ".github/workflows/deploy-sync.yml"]
   workflow_dispatch:
 
 permissions:

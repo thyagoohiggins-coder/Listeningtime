@@ -506,7 +506,7 @@ class MainActivity : Activity() {
             st.addView(text(label, 11f, color, spacing = 0.14f), lp(left = 8))
             p.addView(st)
             p.addView(text("Use o mesmo link de sincronização no celular e no navegador. Para criar um, cole o endereço do " +
-                "seu servidor Cloudflare (https://listeningtime-sync.SEU-USUARIO.workers.dev) e toque em GERAR LINK.",
+                "seu servidor Cloudflare (https://listeningtime.SEU-USUARIO.workers.dev) e toque em GERAR LINK.",
                 11f, Ui.TEXT2), lp(top = 12, bottom = 10))
             val link = input(SyncManager.link(this) ?: "", "https://...workers.dev/#CODIGO")
             val name = input(SyncManager.name(this), "Nome deste aparelho")
