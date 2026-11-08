@@ -208,11 +208,11 @@ class MainActivity : Activity() {
             p.addView(FrameLayout(this).apply {
                 addView(ring, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
             }, lp(top = 4))
-            val items = StreamingApps.apps.filter { (s.todayByApp[it.name] ?: 0) > 0 }
+            val items = StreamingApps.apps.filter { (s.todayByApp[it.name] ?: 0L) > 0 }
                 .sortedByDescending { s.todayByApp[it.name] }
             if (items.isEmpty()) p.addView(text("Nada assistido hoje ainda.", 12f, Ui.TEXT2).apply { gravity = Gravity.CENTER }, lp(top = 8))
             for (a in items) {
-                val v = s.todayByApp[a.name] ?: 0
+                val v = s.todayByApp[a.name] ?: 0L
                 val r = hbox().apply { gravity = Gravity.CENTER_VERTICAL }
                 r.addView(dot(a.color))
                 r.addView(text(a.name, 12f, Ui.TEXT), weight(left = 8))
@@ -427,14 +427,14 @@ class MainActivity : Activity() {
     private fun rankPanel(s: Tracker.Stats) {
         panel("05", "RANKING DO MÊS") { p ->
             val rows = StreamingApps.apps.sortedWith(
-                compareByDescending<StreamApp> { s.monthByApp[it.name] ?: 0 }.thenByDescending { s.allByApp[it.name] ?: 0 }
+                compareByDescending<StreamApp> { s.monthByApp[it.name] ?: 0L }.thenByDescending { s.allByApp[it.name] ?: 0L }
             )
-            val max = maxOf(1L, rows.maxOf { s.monthByApp[it.name] ?: 0 })
+            val max = maxOf(1L, rows.maxOf { s.monthByApp[it.name] ?: 0L })
             rows.forEachIndexed { i, a ->
-                val m = s.monthByApp[a.name] ?: 0
+                val m = s.monthByApp[a.name] ?: 0L
                 val share = if (s.monthTotal > 0) m * 100 / s.monthTotal else 0
                 val r = hbox().apply {
-                    alpha = if (m > 0 || (s.allByApp[a.name] ?: 0) > 0) 1f else 0.4f
+                    alpha = if (m > 0 || (s.allByApp[a.name] ?: 0L) > 0) 1f else 0.4f
                     setPadding(0, dp(10), 0, dp(10))
                 }
                 r.addView(text("%02d".format(i + 1), 18f, Ui.MUTED, bold = true), LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -446,7 +446,7 @@ class MainActivity : Activity() {
                 col.addView(head)
                 col.addView(StackBar(this, 4f).apply { segments = listOf(a.color to m); maxValue = max }, lp(top = 6))
                 val off = if (AppSettings.isAppEnabled(this, a.name)) "" else " · desligado"
-                col.addView(text("$share% · hoje ${Tracker.hm(s.todayByApp[a.name] ?: 0)} · total ${Tracker.hm(s.allByApp[a.name] ?: 0)}$off",
+                col.addView(text("$share% · hoje ${Tracker.hm(s.todayByApp[a.name] ?: 0L)} · total ${Tracker.hm(s.allByApp[a.name] ?: 0L)}$off",
                     10f, Ui.MUTED), lp(top = 4))
                 r.addView(col, weight())
                 p.addView(r)

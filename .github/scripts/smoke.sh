@@ -14,6 +14,20 @@ adb shell cmd notification allow_listener $PKG/$PKG.MediaWatcherService || true
 adb shell appops set $PKG GET_USAGE_STATS allow || true
 sleep 6
 adb shell am force-stop $PKG
+# dados de uso de exemplo (alguns apps com tempo, outros sem) — reproduz o cenário real
+T=$(date +%F); Y=$(date -d yesterday +%F); M=$(date +%Y-%m)-01
+cat > usage.xml <<XML
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <long name="t|$T|Netflix" value="3725" />
+    <long name="t|$T|YouTube" value="900" />
+    <long name="t|$Y|Netflix" value="7300" />
+    <long name="t|$Y|Disney+" value="1800" />
+    <long name="t|$M|Crunchyroll" value="2400" />
+    <long name="t|2025-12-24|HBO Max" value="5000" />
+</map>
+XML
+adb shell "run-as $PKG sh -c 'mkdir -p shared_prefs && cat > shared_prefs/usage.xml'" < usage.xml
 adb shell am start -W -n $PKG/.MainActivity
 sleep 12
 adb shell input swipe 500 1500 500 300 300

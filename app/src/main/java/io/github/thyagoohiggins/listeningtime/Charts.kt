@@ -120,7 +120,7 @@ class RingView(ctx: Context, private val sizeDp: Float = 200f) : View(ctx) {
         c.drawArc(box, 0f, 360f, false, arc)
         val total = values.values.sum()
         if (total > 0) {
-            val items = StreamingApps.apps.filter { (values[it.name] ?: 0) > 0 }
+            val items = StreamingApps.apps.filter { (values[it.name] ?: 0L) > 0 }
             val gapDeg = if (items.size > 1) Math.toDegrees((context.px(3f) / r).toDouble()).toFloat() else 0f
             var start = -90f
             for (a in items) {
