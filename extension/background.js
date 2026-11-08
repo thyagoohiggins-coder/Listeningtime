@@ -127,6 +127,90 @@ chrome.storage.onChanged.addListener((ch) => {
   });
 });
 
+// ------------------------------------------------------------ sincronização
+
+const SYNC_ALARM = "lt-sync";
+chrome.alarms.create(SYNC_ALARM, { periodInMinutes: 5 });
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === SYNC_ALARM) syncNow().catch(() => {}); });
+
+async function deviceId() {
+  let { deviceId } = await chrome.storage.local.get("deviceId");
+  if (!deviceId) {
+    deviceId = "web-" + newSyncCode().slice(0, 12).toLowerCase();
+    await chrome.storage.local.set({ deviceId });
+  }
+  return deviceId;
+}
+
+/** Envia o que este navegador contou e recebe o que os outros aparelhos contaram. */
+async function syncNow() {
+  const { sync } = await chrome.storage.local.get("sync");
+  if (!sync || !sync.url || !sync.code) return { ok: false, error: "não configurado" };
+  // 1) foto dos dados locais (dentro da fila, para não misturar com os ticks)
+  let body;
+  await enqueue(async () => {
+    const all = await chrome.storage.local.get(null);
+    const counts = {};
+    for (const [k, v] of Object.entries(all)) {
+      const p = k.split("|");
+      if (p.length === 3 && p[0] === "t" && typeof v === "number") counts[`${p[1]}|${p[2]}`] = v;
+    }
+    body = { device: await deviceId(), name: sync.name || "Navegador", platform: "browser", counts, clears: all.clears || {} };
+  });
+  let res;
+  try {
+    const r = await fetch(sync.url.replace(/\/+$/, "") + "/v1/sync", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + sync.code, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    res = await r.json();
+    if (!r.ok) throw new Error(res.error || "HTTP " + r.status);
+  } catch (e) {
+    await chrome.storage.local.set({ syncStatus: { at: Date.now(), ok: false, error: String(e.message || e) } });
+    return { ok: false, error: String(e.message || e) };
+  }
+  // 2) aplica limpezas feitas em outros aparelhos e guarda os dados deles
+  await enqueue(async () => {
+    const all = await chrome.storage.local.get(null);
+    const clears = { ...(all.clears || {}) };
+    const toClear = Object.entries(res.clears || {}).filter(([d, ts]) => ts > (clears[d] || 0)).map(([d]) => d);
+    const rm = Object.keys(all).filter((k) => k.startsWith("t|") && toClear.includes(k.slice(2, 12)));
+    if (rm.length) await chrome.storage.local.remove(rm);
+    for (const d of toClear) clears[d] = res.clears[d];
+    const remote = {};
+    for (const dev of res.devices || []) {
+      for (const [k, v] of Object.entries(dev.counts || {})) remote[k] = (remote[k] || 0) + v;
+    }
+    await chrome.storage.local.set({
+      clears, remote,
+      syncDevices: (res.devices || []).map((d) => ({ name: d.name, platform: d.platform, updatedAt: d.updatedAt })),
+      syncStatus: { at: Date.now(), ok: true },
+    });
+  });
+  return { ok: true };
+}
+
+/** Apaga a contagem de um dia (aqui e, via sincronização, nos outros aparelhos). */
+async function clearDay(day) {
+  await enqueue(async () => {
+    const all = await chrome.storage.local.get(null);
+    await chrome.storage.local.remove(Object.keys(all).filter((k) => k.startsWith(`t|${day}|`)));
+    const remote = { ...(all.remote || {}) };
+    for (const k of Object.keys(remote)) if (k.startsWith(day + "|")) delete remote[k];
+    const clears = { ...(all.clears || {}), [day]: Date.now() };
+    await chrome.storage.local.set({ remote, clears });
+    if (session && dayKey() === day) { session.secs = 0; session.carry = 0; }
+  });
+  syncNow().catch(() => {});
+}
+
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.type === "syncNow") { syncNow().then(sendResponse); return true; }
+  if (msg.type === "clearDay" && /^\d{4}-\d{2}-\d{2}$/.test(msg.day)) { clearDay(msg.day).then(() => sendResponse({ ok: true })); return true; }
+  return false;
+});
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "tick" && typeof msg.app === "string") {
     enqueue(() => onTick(msg.app, Number(msg.dt) || 1));

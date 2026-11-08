@@ -68,14 +68,37 @@ function hm(secs) {
   return h > 0 ? `${h}h ${pad2(m)}m` : `${m}m`;
 }
 
-/** Converte o storage ("t|AAAA-MM-DD|App" -> segundos) em lista de registros. */
+/**
+ * Converte o storage em lista de registros: o que ESTE navegador contou ("t|AAAA-MM-DD|App")
+ * + o que os outros aparelhos sincronizados contaram (all.remote["AAAA-MM-DD|App"]).
+ */
 function entriesFrom(all) {
   const out = [];
   for (const [k, v] of Object.entries(all)) {
     const p = k.split("|");
     if (p.length === 3 && p[0] === "t" && typeof v === "number") out.push({ day: p[1], app: p[2], secs: v });
   }
+  for (const [k, v] of Object.entries(all.remote || {})) {
+    const p = k.split("|");
+    if (p.length === 2 && typeof v === "number") out.push({ day: p[0], app: p[1], secs: v });
+  }
   return out;
+}
+
+/** Link de sincronização: "https://servidor.workers.dev/#CODIGO" -> { url, code } */
+function parseSyncLink(link) {
+  try {
+    const u = new URL(String(link).trim());
+    const code = decodeURIComponent(u.hash.slice(1));
+    if (!/^https?:$/.test(u.protocol) || code.length < 16) return null;
+    return { url: u.origin, code };
+  } catch (_) { return null; }
+}
+
+function newSyncCode() {
+  const abc = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const b = crypto.getRandomValues(new Uint8Array(24));
+  return [...b].map((x) => abc[x % abc.length]).join("");
 }
 
 /** Estatísticas de um mês (month = 1..12) — mesma lógica do app Android. */

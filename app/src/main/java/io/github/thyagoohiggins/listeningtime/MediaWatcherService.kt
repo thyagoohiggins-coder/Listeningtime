@@ -122,6 +122,8 @@ class MediaWatcherService : NotificationListenerService() {
         val paused = PauseState.isPaused(this)
         livePaused = paused
 
+        if (countTime) SyncManager.maybeSync(this)
+
         // App desligado no meio da sessão: encerra na hora (sem esperar a carência de 1 min).
         activePkg?.let { if (!AppSettings.isAppEnabled(this, StreamingApps.nameOf(it))) endSession() }
 

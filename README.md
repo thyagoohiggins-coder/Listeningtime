@@ -75,9 +75,30 @@ Instalação (a cada Release saem dois zips):
 - **Firefox**: `about:debugging` → *Este Firefox* → *Carregar extensão temporária* → escolha o zip `firefox`
   (extensões não assinadas saem ao fechar o Firefox; para ficar permanente é preciso assinar no addons.mozilla.org).
 
-Os dados da extensão ficam só no navegador e são separados dos dados do celular.
+Sem sincronização, os dados da extensão ficam só no navegador. Com a sincronização (abaixo), celular e
+navegadores mostram o tempo somado de todos os aparelhos.
 
-## Como é compilado
+## Limpar um dia
+No painel, toque num dia do **calendário** e use **Limpar este dia**. Com a sincronização ligada, o dia é
+apagado também nos outros aparelhos.
+
+## Sincronizar celular ↔ navegador (Cloudflare, grátis)
+O servidor fica em `sync-worker/` (Cloudflare Worker + Durable Object) e roda no plano gratuito.
+Cada aparelho envia só o que ele contou, então nada é somado em dobro.
+
+1. Crie uma conta no [Cloudflare](https://dash.cloudflare.com/sign-up). Em **Workers & Pages**, abra a página uma
+   vez para criar seu subdomínio `*.workers.dev`. Anote o **Account ID** (aparece na lateral dessa página).
+2. Em **My Profile → API Tokens → Create Token**, use o modelo **Edit Cloudflare Workers** e copie o token.
+3. No GitHub: **Settings → Secrets and variables → Actions**, crie `CLOUDFLARE_API_TOKEN` e `CLOUDFLARE_ACCOUNT_ID`.
+4. Em **Actions → Publicar servidor de sincronização (Cloudflare) → Run workflow**. No log aparece o endereço,
+   algo como `https://listeningtime-sync.SEU-USUARIO.workers.dev`.
+5. Num aparelho, em **08 · Sincronização**, cole esse endereço, toque em **Gerar link** e depois em **Salvar**.
+   Use **Copiar** e cole o mesmo link nos outros aparelhos (celular e navegadores) → **Salvar**.
+
+A sincronização roda a cada 5 minutos (e ao abrir o app/painel), ou na hora em **Sincronizar**.
+O código depois do `#` é a senha do seu espaço: quem tiver o link vê os dados — não compartilhe.
+
+
 `.github/workflows/release.yml` roda a cada push (ou manualmente em *Actions → Run workflow*),
 compila o APK release assinado, empacota a extensão e publica uma Release `v1.0.<número da build>`
 com o APK e os zips da extensão anexados.

@@ -10,7 +10,11 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["storage", "notifications"],
+  "permissions": [
+    "storage",
+    "notifications",
+    "alarms"
+  ],
   "background": {
     "service_worker": "background.js"
   },
@@ -29,7 +33,9 @@
   },
   "commands": {
     "toggle-pause": {
-      "suggested_key": { "default": "Alt+Shift+P" },
+      "suggested_key": {
+        "default": "Alt+Shift+P"
+      },
       "description": "Pausar / retomar a contagem"
     }
   },
@@ -48,7 +54,10 @@
         "*://tv.apple.com/*",
         "*://*.disneyplus.com/*"
       ],
-      "js": ["shared.js", "content.js"],
+      "js": [
+        "shared.js",
+        "content.js"
+      ],
       "all_frames": true,
       "run_at": "document_idle"
     }

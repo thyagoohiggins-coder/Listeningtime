@@ -117,7 +117,8 @@ function dayDetailHTML(d) {
   return `<div class="head"><span>${WD[date.getDay()]} ${pad2(d)}/${pad2(month)}</span><span class="num">${hm(total)}</span></div>
     ${total ? stackBarHTML(items, total, 8) : ""}
     ${items.length ? items.map((p) => `<div class="row"><span class="dot" style="background:${p.color}"></span><span>${p.name}</span><span class="num">${hm(p.v)}</span></div>`).join("")
-      : `<div class="t2" style="font-size:12px">Sem registros neste dia.</div>`}`;
+      : `<div class="t2" style="font-size:12px">Sem registros neste dia.</div>`}
+    ${total ? `<button class="btn danger" data-action="clear-day" data-day="${d}">Limpar este dia</button>` : ""}`;
 }
 
 function timelineHTML() {
@@ -217,10 +218,47 @@ function appsHTML() {
   </section>`;
 }
 
+function timeAgo(ts) {
+  if (!ts) return "nunca";
+  const s = Math.round((Date.now() - ts) / 1000);
+  if (s < 60) return "agora há pouco";
+  if (s < 3600) return `há ${Math.floor(s / 60)} min`;
+  if (s < 86400) return `há ${Math.floor(s / 3600)} h`;
+  return `há ${Math.floor(s / 86400)} dias`;
+}
+
+function syncHTML() {
+  const cfg = ALL.sync;
+  const st = ALL.syncStatus;
+  const devs = ALL.syncDevices || [];
+  const link = cfg ? `${cfg.url}/#${cfg.code}` : "";
+  const status = !cfg ? `<div class="status idle"><span class="dot"></span>Não configurado</div>`
+    : st && !st.ok ? `<div class="status" style="color:#e66767"><span class="dot" style="background:#e66767"></span>Erro: ${st.error}</div>`
+    : `<div class="status live"><span class="dot" style="animation:none"></span>Sincronizado ${timeAgo(st && st.at)}</div>`;
+  return `<section class="hud syncp">
+    <div class="label"><b>08</b> Sincronização</div>
+    ${status}
+    <p class="t2" style="font-size:12px;margin:12px 0">Cole aqui o <b>link de sincronização</b> (o mesmo no celular e no navegador).
+      Para criar um, cole o endereço do seu servidor Cloudflare (ex.: <code>https://listeningtime-sync.SEU-USUARIO.workers.dev</code>) e toque em <i>Gerar link</i>.</p>
+    <div class="sync-form">
+      <input id="sync-link" type="text" spellcheck="false" placeholder="https://listeningtime-sync....workers.dev/#CODIGO" value="${link}">
+      <input id="sync-name" type="text" spellcheck="false" placeholder="Nome deste aparelho" value="${(cfg && cfg.name) || "Navegador"}">
+    </div>
+    <div class="sys-row" style="margin-top:10px">
+      <button class="btn" data-action="sync-gen">Gerar link</button>
+      <button class="btn" data-action="sync-save">Salvar e sincronizar</button>
+      ${cfg ? `<button class="btn" data-action="sync-copy">Copiar link</button><button class="btn" data-action="sync-now">Sincronizar agora</button>
+        <button class="btn danger" data-action="sync-off">Desconectar</button>` : ""}
+    </div>
+    ${devs.length ? `<div class="devs">${devs.map((d) => `<div class="dev"><span class="dot" style="background:var(--accent)"></span>
+      <span>${d.name}</span><span class="muted">${d.platform || ""}</span><span class="muted" style="margin-left:auto">${timeAgo(d.updatedAt)}</span></div>`).join("")}</div>` : ""}
+  </section>`;
+}
+
 function sysHTML() {
   const notif = ALL.notifications !== false;
   return `<section class="hud sys" style="--hud-c: var(--line-hi)">
-    <div class="label"><b>08</b> Sistema</div>
+    <div class="label"><b>09</b> Sistema</div>
     <div class="sys-row">
       <label class="switch"><input type="checkbox" data-action="notif" ${notif ? "checked" : ""}> Notificação ao começar um vídeo</label>
       <span class="t2" style="font-size:12px">Atalho pausar/retomar: <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd></span>
@@ -239,7 +277,7 @@ function renderTopStatus() {
 
 async function render() {
   await load();
-  app.innerHTML = heroHTML() + totalsHTML() + calHTML() + timelineHTML() + rankHTML() + daysHTML() + appsHTML() + sysHTML();
+  app.innerHTML = heroHTML() + totalsHTML() + calHTML() + timelineHTML() + rankHTML() + daysHTML() + appsHTML() + syncHTML() + sysHTML();
   drawChart();
   renderTopStatus();
 }
@@ -268,6 +306,36 @@ app.addEventListener("click", async (e) => {
   if (a) {
     const act = a.dataset.action;
     if (act === "toggle-pause") { await togglePause(); }
+    else if (act === "clear-day") {
+      const d = +a.dataset.day;
+      const key = `${year}-${pad2(month)}-${pad2(d)}`;
+      if (confirm(`Apagar toda a contagem de ${pad2(d)}/${pad2(month)}/${year} (${hm(S.dayTotal(d))})?\n\nSe a sincronização estiver ligada, o dia também é apagado nos outros aparelhos.`)) {
+        await chrome.runtime.sendMessage({ type: "clearDay", day: key });
+        render();
+      }
+    }
+    else if (act === "sync-gen") {
+      const input = document.getElementById("sync-link");
+      let base = input.value.trim().split("#")[0].replace(/\/+$/, "");
+      if (!/^https?:\/\/./.test(base)) { alert("Cole primeiro o endereço do seu servidor (https://...workers.dev)."); return; }
+      input.value = `${base}/#${newSyncCode()}`;
+    }
+    else if (act === "sync-save") {
+      const cfg = parseSyncLink(document.getElementById("sync-link").value);
+      if (!cfg) { alert("Link inválido. Formato: https://servidor.workers.dev/#CODIGO"); return; }
+      cfg.name = document.getElementById("sync-name").value.trim().slice(0, 40) || "Navegador";
+      await chrome.storage.local.set({ sync: cfg });
+      await chrome.runtime.sendMessage({ type: "syncNow" });
+      render();
+    }
+    else if (act === "sync-now") { await chrome.runtime.sendMessage({ type: "syncNow" }); render(); }
+    else if (act === "sync-copy") { await navigator.clipboard.writeText(`${ALL.sync.url}/#${ALL.sync.code}`); a.textContent = "Copiado ✓"; }
+    else if (act === "sync-off") {
+      if (confirm("Desconectar este navegador da sincronização? Os dados dos outros aparelhos deixam de aparecer aqui.")) {
+        await chrome.storage.local.remove(["sync", "remote", "syncDevices", "syncStatus"]);
+        render();
+      }
+    }
     else if (act === "app-toggle") {
       const off = new Set(ALL.disabledApps || []);
       const name = a.dataset.app;
@@ -308,7 +376,10 @@ window.addEventListener("resize", drawChart);
 // Atualizações ao vivo
 let lastFull = Date.now();
 chrome.storage.onChanged.addListener((ch) => {
-  if ("paused" in ch || "disabledApps" in ch) { render(); return; }
+  if ("paused" in ch || "disabledApps" in ch || "remote" in ch || "syncStatus" in ch) {
+    if (document.activeElement && document.activeElement.tagName === "INPUT") return; // não apaga o que está sendo digitado
+    render(); return;
+  }
   if (Date.now() - lastFull > 10_000 && Object.keys(ch).some((k) => k.startsWith("t|"))) { lastFull = Date.now(); render(); }
 });
 setInterval(async () => {

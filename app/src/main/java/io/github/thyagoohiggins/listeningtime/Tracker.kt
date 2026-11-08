@@ -12,11 +12,17 @@ import java.util.Locale
  */
 object Tracker {
     private const val PREFS = "usage"
+    /** Somas do que os OUTROS aparelhos sincronizados contaram (mesmo formato de chave). */
+    private const val REMOTE = "usage_remote"
+    /** Dias apagados: "AAAA-MM-DD" -> momento da limpeza (ms). */
+    private const val CLEARS = "clears"
 
     private fun fmt() = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     fun today(): String = fmt().format(Date())
     private fun key(day: String, app: String) = "t|$day|$app"
     private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private fun remote(ctx: Context) = ctx.getSharedPreferences(REMOTE, Context.MODE_PRIVATE)
+    private fun clearsPrefs(ctx: Context) = ctx.getSharedPreferences(CLEARS, Context.MODE_PRIVATE)
 
     fun add(ctx: Context, pkg: String, seconds: Long) {
         if (seconds <= 0) return
@@ -26,24 +32,63 @@ object Tracker {
         p.edit().putLong(k, p.getLong(k, 0) + seconds).apply()
     }
 
-    fun todayFor(ctx: Context, app: String): Long = prefs(ctx).getLong(key(today(), app), 0)
+    fun todayFor(ctx: Context, app: String): Long =
+        prefs(ctx).getLong(key(today(), app), 0) + remote(ctx).getLong(key(today(), app), 0)
 
     /** Total do app no mês atual. */
     fun monthFor(ctx: Context, app: String): Long {
         val prefix = "t|" + today().substring(0, 8)
         val suffix = "|$app"
-        return prefs(ctx).all.entries.sumOf { (k, v) ->
+        return (prefs(ctx).all.entries + remote(ctx).all.entries).sumOf { (k, v) ->
             if (k.startsWith(prefix) && k.endsWith(suffix)) (v as? Long) ?: 0L else 0L
         }
     }
 
     data class Entry(val day: String, val app: String, val secs: Long)
 
-    fun entries(ctx: Context): List<Entry> = prefs(ctx).all.mapNotNull { (k, v) ->
+    private fun parse(all: Map<String, *>): List<Entry> = all.mapNotNull { (k, v) ->
         val parts = k.split("|")
         val secs = v as? Long
         if (parts.size == 3 && parts[0] == "t" && secs != null) Entry(parts[1], parts[2], secs) else null
     }
+
+    /** Este aparelho + outros aparelhos sincronizados. */
+    fun entries(ctx: Context): List<Entry> = parse(prefs(ctx).all) + parse(remote(ctx).all)
+
+    /** Somente o que ESTE aparelho contou: "AAAA-MM-DD|App" -> segundos (para enviar ao servidor). */
+    fun ownCounts(ctx: Context): Map<String, Long> = parse(prefs(ctx).all).associate { "${it.day}|${it.app}" to it.secs }
+
+    fun clears(ctx: Context): Map<String, Long> =
+        clearsPrefs(ctx).all.mapNotNull { (k, v) -> (v as? Long)?.let { k to it } }.toMap()
+
+    private fun removeDay(p: android.content.SharedPreferences, day: String) {
+        val e = p.edit()
+        p.all.keys.filter { it.startsWith("t|$day|") }.forEach { e.remove(it) }
+        e.commit()
+    }
+
+    /** Apaga a contagem de um dia aqui e (pela sincronização) nos outros aparelhos. */
+    fun clearDay(ctx: Context, day: String) {
+        removeDay(prefs(ctx), day)
+        removeDay(remote(ctx), day)
+        clearsPrefs(ctx).edit().putLong(day, System.currentTimeMillis()).commit()
+        SyncManager.syncAsync(ctx, null)
+    }
+
+    /** Aplica o retorno do servidor: limpezas feitas em outros aparelhos + somas dos outros aparelhos. */
+    fun applySync(ctx: Context, serverClears: Map<String, Long>, remoteSums: Map<String, Long>) {
+        val local = clears(ctx)
+        val ce = clearsPrefs(ctx).edit()
+        for ((day, ts) in serverClears) {
+            if (ts > (local[day] ?: 0L)) { removeDay(prefs(ctx), day); ce.putLong(day, ts) }
+        }
+        ce.commit()
+        val re = remote(ctx).edit().clear()
+        for ((k, v) in remoteSums) re.putLong("t|$k", v)
+        re.commit()
+    }
+
+    fun clearRemote(ctx: Context) { remote(ctx).edit().clear().commit() }
 
     /** Estatísticas de um mês (month = 1..12). */
     fun stats(ctx: Context, year: Int, month: Int): Stats = Stats(entries(ctx), year, month)

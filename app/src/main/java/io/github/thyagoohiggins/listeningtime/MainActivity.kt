@@ -19,6 +19,11 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.text.InputType
+import android.widget.EditText
 import android.widget.Chronometer
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -45,6 +50,8 @@ class MainActivity : Activity() {
         var ticks = 0
         override fun run() {
             val live = liveKey()
+            // não redesenha enquanto o usuário digita (o campo perderia o texto)
+            if (currentFocus is EditText) { handler.postDelayed(this, 1000); return }
             if (live != lastLive || (MediaWatcherService.liveApp != null && ++ticks % 10 == 0)) {
                 lastLive = live
                 render()
@@ -80,6 +87,7 @@ class MainActivity : Activity() {
         render()
         lastLive = liveKey()
         handler.postDelayed(refresher, 1000)
+        SyncManager.maybeSync(this) { if (currentFocus !is EditText) render() }
     }
 
     override fun onPause() {
@@ -120,6 +128,7 @@ class MainActivity : Activity() {
         rankPanel(s)
         logPanel(s)
         appsPanel()
+        syncPanel()
         systemPanel()
 
         scroll.post { scroll.scrollTo(0, y) }
@@ -328,6 +337,19 @@ class MainActivity : Activity() {
             r.addView(text(Tracker.hm(secs), 12f, Ui.TEXT2))
             box.addView(r, lp(top = 8))
         }
+        box.addView(outlineButton("LIMPAR ESTE DIA", DANGER) { confirmClearDay(d, s.dayTotal(d)) },
+            lp(top = 14).apply { width = ViewGroup.LayoutParams.WRAP_CONTENT })
+    }
+
+    private fun confirmClearDay(d: Int, total: Long) {
+        val day = String.format(Locale.US, "%04d-%02d-%02d", year, month, d)
+        val extra = if (SyncManager.isConfigured(this)) "\n\nA sincronização está ligada: o dia também será apagado nos outros aparelhos." else ""
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Limpar %02d/%02d/%d?".format(d, month, year))
+            .setMessage("Toda a contagem deste dia (${Tracker.hm(total)}) será apagada. Isso não pode ser desfeito.$extra")
+            .setPositiveButton("Limpar") { _, _ -> Tracker.clearDay(this, day); render() }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 
     // ---- 04 linha do tempo ----------------------------------------------
@@ -467,10 +489,99 @@ class MainActivity : Activity() {
         return box
     }
 
-    // ---- 08 sistema / permissões ----------------------------------------
+    // ---- 08 sincronização -----------------------------------------------
+
+    private fun syncPanel() {
+        panel("08", "SINCRONIZAÇÃO") { p ->
+            val on = SyncManager.isConfigured(this)
+            val err = SyncManager.lastError(this)
+            val (color, label) = when {
+                !on -> Ui.MUTED to "NÃO CONFIGURADO"
+                SyncManager.running -> Ui.ACCENT to "SINCRONIZANDO…"
+                err != null -> 0xFFE66767.toInt() to "ERRO: ${err.uppercase()}"
+                else -> Ui.LIVE to "SINCRONIZADO ${ago(SyncManager.lastAt(this)).uppercase()}"
+            }
+            val st = hbox().apply { gravity = Gravity.CENTER_VERTICAL }
+            st.addView(dot(color))
+            st.addView(text(label, 11f, color, spacing = 0.14f), lp(left = 8))
+            p.addView(st)
+            p.addView(text("Use o mesmo link de sincronização no celular e no navegador. Para criar um, cole o endereço do " +
+                "seu servidor Cloudflare (https://listeningtime-sync.SEU-USUARIO.workers.dev) e toque em GERAR LINK.",
+                11f, Ui.TEXT2), lp(top = 12, bottom = 10))
+            val link = input(SyncManager.link(this) ?: "", "https://...workers.dev/#CODIGO")
+            val name = input(SyncManager.name(this), "Nome deste aparelho")
+            p.addView(link)
+            p.addView(name, lp(top = 8))
+            val b1 = hbox()
+            b1.addView(outlineButton("GERAR LINK") {
+                val base = link.text.toString().trim().substringBefore("#").trimEnd('/')
+                if (!base.startsWith("http")) toast("Cole primeiro o endereço do seu servidor (https://...workers.dev)")
+                else link.setText("$base/#${SyncManager.newCode()}")
+            }, weight())
+            b1.addView(outlineButton("SALVAR") {
+                if (SyncManager.configure(this, link.text.toString(), name.text.toString())) {
+                    link.clearFocus(); name.clearFocus()
+                    SyncManager.syncAsync(this) { render() }
+                    render()
+                } else toast("Link inválido. Formato: https://servidor.workers.dev/#CODIGO")
+            }, weight(left = 8))
+            p.addView(b1, lp(top = 12))
+            if (on) {
+                val b2 = hbox()
+                b2.addView(outlineButton("COPIAR") {
+                    getSystemService(ClipboardManager::class.java)
+                        .setPrimaryClip(ClipData.newPlainText("Listening Time", SyncManager.link(this)))
+                    toast("Link copiado")
+                }, weight())
+                b2.addView(outlineButton("SINCRONIZAR") { SyncManager.syncAsync(this) { render() }; render() }, weight(left = 8))
+                b2.addView(outlineButton("SAIR", DANGER) {
+                    AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                        .setTitle("Desconectar?")
+                        .setMessage("Os dados dos outros aparelhos deixam de aparecer aqui. O que este aparelho contou é mantido.")
+                        .setPositiveButton("Desconectar") { _, _ -> SyncManager.disconnect(this); render() }
+                        .setNegativeButton("Cancelar", null).show()
+                }, weight(left = 8))
+                p.addView(b2, lp(top = 8))
+                val devs = SyncManager.devices(this)
+                if (devs.isNotEmpty()) p.addView(dashedRule(), lp(top = 14, bottom = 10))
+                for (d in devs) {
+                    val r = hbox().apply { gravity = Gravity.CENTER_VERTICAL }
+                    r.addView(dot(Ui.ACCENT))
+                    r.addView(text(d.name, 12f, Ui.TEXT), weight(left = 8))
+                    r.addView(text("${d.platform} · ${ago(d.updatedAt)}", 10f, Ui.MUTED))
+                    p.addView(r, lp(top = 6))
+                }
+            }
+        }
+    }
+
+    private fun ago(ts: Long): String {
+        if (ts <= 0) return "nunca"
+        val s = (System.currentTimeMillis() - ts) / 1000
+        return when {
+            s < 60 -> "agora há pouco"
+            s < 3600 -> "há ${s / 60} min"
+            s < 86400 -> "há ${s / 3600} h"
+            else -> "há ${s / 86400} dias"
+        }
+    }
+
+    private fun input(value: String, hint: String) = EditText(this).apply {
+        setText(value); this.hint = hint
+        setTextColor(Ui.TEXT); setHintTextColor(Ui.MUTED)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); typeface = Ui.MONO
+        isSingleLine = true
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        background = GradientDrawable().apply { setColor(Ui.PANEL2); setStroke(dp(1), Ui.LINE_HI) }
+        setPadding(dp(12), dp(10), dp(12), dp(10))
+    }
+
+    private fun toast(msg: String) = android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show()
+
+    // ---- 09 sistema / permissões ----------------------------------------
 
     private fun systemPanel() {
-        panel("08", "SISTEMA", bracket = Ui.LINE_HI) { p ->
+        panel("09", "SISTEMA", bracket = Ui.LINE_HI) { p ->
             @Suppress("DEPRECATION")
             val sw = Switch(this).apply {
                 text = "Contar com o app aberto na tela (para apps que não informam a reprodução)"
@@ -530,7 +641,7 @@ class MainActivity : Activity() {
         col.addView(text(title, 13f, Ui.TEXT, bold = true))
         col.addView(text(desc, 11f, Ui.TEXT2), lp(top = 2))
         r.addView(col, weight())
-        r.addView(outlineButton("CONCEDER", onClick), lp(left = 10).apply { width = ViewGroup.LayoutParams.WRAP_CONTENT })
+        r.addView(outlineButton("CONCEDER", onClick = onClick), lp(left = 10).apply { width = ViewGroup.LayoutParams.WRAP_CONTENT })
         box.addView(r, lp(top = 10))
     }
 
@@ -597,9 +708,9 @@ class MainActivity : Activity() {
         content.addView(p, lp(top = 14))
     }
 
-    private fun outlineButton(label: String, onClick: () -> Unit) = text(label, 11f, Ui.TEXT, bold = true, spacing = 0.1f).apply {
+    private fun outlineButton(label: String, color: Int = Ui.TEXT, onClick: () -> Unit) = text(label, 11f, color, bold = true, spacing = 0.1f).apply {
         gravity = Gravity.CENTER
-        background = GradientDrawable().apply { setColor(0); setStroke(dp(1), Ui.LINE_HI) }
+        background = GradientDrawable().apply { setColor(0); setStroke(dp(1), if (color == DANGER) 0xFF4A2A2E.toInt() else Ui.LINE_HI) }
         setPadding(dp(12), dp(11), dp(12), dp(11))
         setOnClickListener { onClick() }
     }
@@ -610,6 +721,7 @@ class MainActivity : Activity() {
     }
 
     companion object {
+        const val DANGER = 0xFFE66767.toInt()
         const val RELEASES_URL = "https://github.com/thyagoohiggins-coder/Listeningtime/releases/latest"
     }
 }
