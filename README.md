@@ -1,8 +1,15 @@
 # Listening Time
 
-App Android que mostra um **cronômetro de tempo de tela** (balão flutuante + notificação)
-sempre que você reproduz vídeos na **Netflix, Prime Video, YouTube, HBO Max, Crunchyroll,
-Apple TV ou Disney+**, e soma o tempo assistido por dia em cada serviço.
+App Android que mostra uma **notificação com cronômetro de tempo de tela** sempre que você
+reproduz vídeos na **Netflix, Prime Video, YouTube, HBO Max, Crunchyroll, Apple TV ou Disney+**.
+
+O painel do app (tema escuro) mostra:
+- ao vivo: o app que está tocando e o cronômetro da sessão;
+- **hoje**, **total geral** (todos os dias) e, para cada mês: total, média por dia ativo e dia recorde;
+- **gráfico de horas por dia do mês**, empilhado por app (toque numa barra para ver o detalhe do dia);
+- **por app**: horas no mês, hoje e total geral;
+- **dias do mês**: lista de cada dia com o total e a divisão por app;
+- navegação entre meses (‹ ›).
 
 ## Como baixar
 **Releases** → baixe o `ListeningTime-vX.Y.Z.apk` mais recente → instale.
@@ -37,10 +44,9 @@ keytool -genkeypair -keystore release.jks -alias listeningtime -keyalg RSA -keys
 1. **Acesso a notificações** (obrigatório): é assim que o app sabe que um vídeo está tocando.
    No Android 13+, APKs baixados fora da Play Store aparecem como "Configuração restrita":
    abra *Informações do app → ⋮ → Permitir configurações restritas* e tente de novo.
-2. **Sobrepor a outros apps**: para o cronômetro flutuante (o balão pode ser arrastado).
-3. **Notificações** (Android 13+).
-4. **Sem restrição de bateria**: para o sistema não fechar o contador.
-5. **Acesso ao uso** (opcional): só para a opção "contar com o app aberto", útil se algum
+2. **Notificações** (Android 13+).
+3. **Sem restrição de bateria**: para o sistema não fechar o contador.
+4. **Acesso ao uso** (opcional): só para a opção "contar com o app aberto", útil se algum
    app não informar a reprodução ao sistema.
 
 O tempo só conta com a tela ligada e o vídeo **tocando**. Pausas de até 1 minuto continuam a mesma sessão.

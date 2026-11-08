@@ -15,27 +15,29 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.service.notification.NotificationListenerService
+import android.widget.RemoteViews
+import java.util.Calendar
 
 /**
  * Ligado pelo sistema quando o "Acesso a notificações" está ativo.
- * A cada segundo verifica se algum app de streaming está reproduzindo (MediaSession)
- * e, se estiver, conta o tempo e mostra o cronômetro por cima da tela.
+ * A cada segundo verifica se algum app de streaming está reproduzindo (MediaSession);
+ * se estiver, soma o tempo e mostra uma notificação com cronômetro.
  */
 class MediaWatcherService : NotificationListenerService() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var msm: MediaSessionManager? = null
     @Volatile private var controllers: List<MediaController> = emptyList()
-    private lateinit var overlay: OverlayController
     private lateinit var fg: ForegroundDetector
     private var connected = false
 
-    // Estado da sessão atual
     private var activePkg: String? = null
     private var sessionSeconds = 0L
     private var lastTick = 0L
     private var lastSeenPlaying = 0L
-    private var carry = 0L // milissegundos ainda não somados
+    private var carry = 0L
+    private var lastNotifUpdate = 0L
+    private var notifShowing = false
 
     private val sessionsListener =
         MediaSessionManager.OnActiveSessionsChangedListener { list -> controllers = list ?: emptyList() }
@@ -49,7 +51,6 @@ class MediaWatcherService : NotificationListenerService() {
 
     override fun onListenerConnected() {
         connected = true
-        overlay = OverlayController(this)
         fg = ForegroundDetector(this)
         createChannel()
         val cn = ComponentName(this, MediaWatcherService::class.java)
@@ -81,15 +82,12 @@ class MediaWatcherService : NotificationListenerService() {
         running = false
         handler.removeCallbacks(tick)
         runCatching { msm?.removeOnActiveSessionsChangedListener(sessionsListener) }
-        flush()
-        overlay.hide()
-        cancelNotification()
+        endSession()
     }
 
     /** Pacote de streaming que está tocando agora, ou null. */
     private fun playingPackage(): String? {
-        val screenOn = getSystemService(PowerManager::class.java).isInteractive
-        if (!screenOn) return null
+        if (!getSystemService(PowerManager::class.java).isInteractive) return null
         for (c in controllers) {
             val pkg = c.packageName
             if (StreamingApps.isTarget(pkg) && c.playbackState?.state == PlaybackState.STATE_PLAYING) {
@@ -112,13 +110,14 @@ class MediaWatcherService : NotificationListenerService() {
         if (pkg != null) {
             val continuing = pkg == activePkg && now - lastSeenPlaying < GRACE_MS
             if (!continuing) {
-                flush()
                 activePkg = pkg
                 sessionSeconds = 0
                 carry = 0
+                lastNotifUpdate = 0
             } else {
                 carry += delta
             }
+            val wasPaused = now - lastSeenPlaying > 2000
             lastSeenPlaying = now
             val whole = carry / 1000
             if (whole > 0) {
@@ -126,54 +125,92 @@ class MediaWatcherService : NotificationListenerService() {
                 sessionSeconds += whole
                 Tracker.add(this, pkg, whole)
             }
-            val name = StreamingApps.nameOf(pkg)
-            val total = Tracker.todayFor(this, name)
-            overlay.show("⏱ $name  ${Tracker.format(sessionSeconds)}  ·  hoje ${Tracker.formatShort(total)}")
-            if (!continuing) showNotification(name)
-        } else {
-            if (overlay.isShowing) overlay.hide()
-            if (activePkg != null && now - lastSeenPlaying >= GRACE_MS) {
-                flush()
-                activePkg = null
-                cancelNotification()
+            liveApp = StreamingApps.nameOf(pkg)
+            liveBase = now - sessionSeconds * 1000
+            // Atualiza ao começar, ao voltar de uma pausa e a cada 30 s (o cronômetro anda sozinho).
+            if (!notifShowing || wasPaused || now - lastNotifUpdate > 30_000) {
+                showNotification(StreamingApps.nameOf(pkg), playing = true)
+                lastNotifUpdate = now
             }
+        } else {
+            if (liveApp != null && notifShowing && now - lastSeenPlaying in 1500..3500) {
+                showNotification(liveApp!!, playing = false) // mostra "pausado"
+            }
+            liveApp = null
+            if (activePkg != null && now - lastSeenPlaying >= GRACE_MS) endSession()
         }
     }
 
-    private fun flush() { carry = 0 }
+    private fun endSession() {
+        activePkg = null
+        liveApp = null
+        carry = 0
+        notifShowing = false
+        getSystemService(NotificationManager::class.java).cancel(NOTIF_ID)
+    }
 
-    // ---- Notificação com cronômetro do sistema ----
+    // ---- Notificação ----
 
     private fun createChannel() {
-        val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(
+        getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL, "Tempo de tela", NotificationManager.IMPORTANCE_LOW).apply {
                 setShowBadge(false)
+                description = "Cronômetro enquanto você assiste"
             }
         )
     }
 
-    private fun showNotification(name: String) {
+    private fun buildViews(layout: Int, name: String, playing: Boolean, big: Boolean): RemoteViews {
+        val color = StreamingApps.colorOf(name)
+        val today = Tracker.todayFor(this, name)
+        val month = Tracker.monthFor(this, name)
+        return RemoteViews(packageName, layout).apply {
+            setInt(R.id.accent, "setColorFilter", color)
+            setTextViewText(
+                R.id.label,
+                (if (playing) "● ${name.uppercase()}" else "❚❚ ${name.uppercase()} · PAUSADO")
+            )
+            setTextColor(R.id.label, color)
+            setChronometer(R.id.chrono, SystemClock.elapsedRealtime() - sessionSeconds * 1000, null, playing)
+            setTextViewText(R.id.today, "Hoje ${Tracker.hm(today)}")
+            setTextViewText(R.id.month, "Mês ${Tracker.hm(month)}")
+            if (big) {
+                val day = Calendar.getInstance().get(Calendar.DAY_OF_MONTH)
+                val avg = (month - today).coerceAtLeast(0) / maxOf(1, day - 1)
+                val pct = if (avg > 0) (today * 100 / avg).toInt() else 100
+                setProgressBar(R.id.progress, 1000, (pct * 10).coerceAtMost(1000), false)
+                setTextViewText(
+                    R.id.progress_label,
+                    if (avg > 0) "Hoje vs. sua média diária no mês (${Tracker.hm(avg)}): $pct%"
+                    else "Primeiro dia registrado no mês"
+                )
+                setTextViewText(R.id.total, "Sessão atual: ${Tracker.hm(sessionSeconds)}  ·  Todos os apps hoje: ${Tracker.hm(StreamingApps.apps.sumOf { Tracker.todayFor(this@MediaWatcherService, it.name) })}")
+            }
+        }
+    }
+
+    private fun showNotification(name: String, playing: Boolean) {
         val pi = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
         val n = Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_timer)
-            .setContentTitle("Assistindo $name")
-            .setContentText("Tempo de tela contando em segundo plano")
-            .setUsesChronometer(true)
-            .setWhen(System.currentTimeMillis() - sessionSeconds * 1000)
-            .setShowWhen(true)
+            .setColor(StreamingApps.colorOf(name))
+            .setSubText(name)
+            .setStyle(Notification.DecoratedCustomViewStyle())
+            .setCustomContentView(buildViews(R.layout.notif_small, name, playing, false))
+            .setCustomBigContentView(buildViews(R.layout.notif_big, name, playing, true))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .setShowWhen(false)
+            .setCategory(Notification.CATEGORY_STATUS)
             .setContentIntent(pi)
             .build()
-        runCatching { getSystemService(NotificationManager::class.java).notify(NOTIF_ID, n) }
-    }
-
-    private fun cancelNotification() {
-        getSystemService(NotificationManager::class.java).cancel(NOTIF_ID)
+        runCatching {
+            getSystemService(NotificationManager::class.java).notify(NOTIF_ID, n)
+            notifShowing = true
+        }
     }
 
     companion object {
@@ -183,6 +220,10 @@ class MediaWatcherService : NotificationListenerService() {
         private const val GRACE_MS = 60_000L
 
         @Volatile var running = false
+        /** App sendo assistido agora (para o painel ao vivo). */
+        @Volatile var liveApp: String? = null
+        /** Base do cronômetro em elapsedRealtime. */
+        @Volatile var liveBase: Long = 0L
 
         fun isEnabled(ctx: Context): Boolean {
             val flat = android.provider.Settings.Secure.getString(
