@@ -34,5 +34,14 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <receiver
+            android:name=".PauseReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="io.github.thyagoohiggins.listeningtime.PAUSE" />
+                <action android:name="io.github.thyagoohiggins.listeningtime.RESUME" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Listening Time</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { width: 340px; background-size: 20px 20px; }
+    .wrap { padding: 14px; display: grid; gap: 12px; }
+    .bar { display: flex; align-items: center; justify-content: space-between; }
+    .brand { font-weight: 800; letter-spacing: .2em; font-size: 13px; }
+    .brand span { color: var(--accent); margin-left: .4em; }
+    .clock { font-size: 40px; margin: 6px 0 2px; }
+    .clock.off { color: var(--muted); }
+    .sub { font-size: 11px; color: var(--text-2); margin-bottom: 12px; }
+    .mini { display: flex; gap: 14px; align-items: center; }
+    .mini .list { flex: 1; display: grid; gap: 6px; font-size: 11px; white-space: nowrap; }
+    .mini .row { display: grid; grid-template-columns: 10px 1fr auto; gap: 8px; align-items: center; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+    .stats > div { padding: 2px 12px; border-left: 1px solid var(--line); }
+    .stats > div:first-child { border-left: 0; padding-left: 0; }
+    .stats .k { font-size: 10px; letter-spacing: .16em; color: var(--text-2); }
+    .stats .v { font-size: 18px; font-weight: 700; }
+    .open { display: block; text-align: center; padding: 10px; border: 1px solid var(--line-hi); color: var(--accent);
+      text-decoration: none; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+    .open:hover { border-color: var(--accent); }
+    .label { margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="bar"><div class="brand">LISTENING<span>TIME</span></div><span class="muted" style="font-size:11px" id="ver"></span></div>
+    <div class="hud" id="live"></div>
+    <div class="hud"><div class="label"><b>01</b> Hoje</div><div class="mini" id="today"></div></div>
+    <div class="hud"><div class="stats" id="stats"></div></div>
+    <a class="open" href="dashboard.html" target="_blank">Abrir painel completo ›</a>
+  </div>
+  <script src="shared.js"></script>
+  <script src="ui.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

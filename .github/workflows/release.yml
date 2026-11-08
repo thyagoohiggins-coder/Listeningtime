@@ -59,10 +59,26 @@ jobs:
           mkdir -p out
           cp app/build/outputs/apk/release/app-release.apk "out/ListeningTime-v${VERSION_NAME}.apk"
 
+      - name: Empacotar extensão de navegador (Chrome/Edge e Firefox)
+        run: |
+          for target in chrome firefox; do
+            rm -rf build-ext && cp -r extension build-ext
+            if [ "$target" = firefox ]; then
+              jq --arg v "$VERSION_NAME" '.version=$v
+                | .background={"scripts":["shared.js","background.js"]}
+                | .browser_specific_settings={"gecko":{"id":"listeningtime@thyagoohiggins.github.io","strict_min_version":"121.0"}}' \
+                extension/manifest.json > build-ext/manifest.json
+            else
+              jq --arg v "$VERSION_NAME" '.version=$v' extension/manifest.json > build-ext/manifest.json
+            fi
+            (cd build-ext && zip -qr "../out/ListeningTime-extensao-${target}-v${VERSION_NAME}.zip" .)
+          done
+          ls -la out
+
       - uses: actions/upload-artifact@v4
         with:
           name: ListeningTime-v${{ env.VERSION_NAME }}
-          path: out/*.apk
+          path: out/*
 
       - name: Publicar Release
         uses: softprops/action-gh-release@v2
@@ -71,9 +87,11 @@ jobs:
           name: Listening Time v${{ env.VERSION_NAME }}
           target_commitish: ${{ github.sha }}
           make_latest: "true"
-          files: out/*.apk
+          files: out/*
           body: |
             Build automática do commit ${{ github.sha }} (branch `${{ github.ref_name }}`).
             versionCode: ${{ env.VERSION_CODE }}
 
-            Baixe o APK abaixo e instale por cima da versão anterior — seus dados são mantidos.
+            **Android:** baixe o `.apk` e instale por cima da versão anterior — seus dados são mantidos.
+            **Chrome/Edge:** baixe o zip `chrome`, extraia, abra `chrome://extensions`, ative o *Modo do desenvolvedor* e clique em *Carregar sem compactação*.
+            **Firefox:** baixe o zip `firefox` e carregue em `about:debugging` → *Este Firefox* → *Carregar extensão temporária*.

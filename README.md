@@ -3,13 +3,18 @@
 App Android que mostra uma **notificação com cronômetro de tempo de tela** sempre que você
 reproduz vídeos na **Netflix, Prime Video, YouTube, HBO Max, Crunchyroll, Apple TV ou Disney+**.
 
-O painel do app (tema escuro) mostra:
-- ao vivo: o app que está tocando e o cronômetro da sessão;
-- **hoje**, **total geral** (todos os dias) e, para cada mês: total, média por dia ativo e dia recorde;
-- **gráfico de horas por dia do mês**, empilhado por app (toque numa barra para ver o detalhe do dia);
-- **por app**: horas no mês, hoje e total geral;
-- **dias do mês**: lista de cada dia com o total e a divisão por app;
-- navegação entre meses (‹ ›).
+Também existe uma **extensão de navegador** (Chrome, Edge e Firefox) com as mesmas funções — veja abaixo.
+
+O painel (visual HUD, igual no app e na extensão) mostra:
+1. **Hoje** — mostrador circular dividido por app, "hoje vs. média", sequência de dias, cronômetro ao vivo e botão **Pausar/Retomar contagem**;
+2. **Acumulado** — total geral (todos os dias) e, por mês: total, média por dia ativo e recorde;
+3. **Calendário** — mapa de calor com as horas de cada dia do mês (toque num dia para ver o detalhe);
+4. **Linha do tempo** — barras empilhadas por app, uma por dia;
+5. **Ranking do mês** — apps ordenados, com % do mês, hoje e total;
+6. **Registro diário** — cada dia com total e divisão por app;
+7. **Sistema** — opções.
+
+A contagem pode ser **pausada** pelo botão do app ou pelo botão da notificação.
 
 ## Como baixar
 **Releases** → baixe o `ListeningTime-vX.Y.Z.apk` mais recente → instale.
@@ -51,6 +56,26 @@ keytool -genkeypair -keystore release.jks -alias listeningtime -keyalg RSA -keys
 
 O tempo só conta com a tela ligada e o vídeo **tocando**. Pausas de até 1 minuto continuam a mesma sessão.
 
+## Extensão de navegador
+Conta o tempo quando um vídeo está tocando (aba visível ou picture-in-picture) em netflix.com, primevideo.com,
+amazon.com(.br)/gp/video, youtube.com, max.com / hbomax.com, crunchyroll.com, tv.apple.com e disneyplus.com.
+
+- **Ícone na barra**: mostra o tempo da sessão (na cor do app) ou `II` quando pausado;
+- **Popup**: cronômetro ao vivo, botão pausar/retomar e resumo de hoje;
+- **Painel completo**: o mesmo painel do app, com dicas ao passar o mouse e exportação dos dados em JSON;
+- **Notificação** ao começar um vídeo, com botão *Pausar contagem* (no Firefox, sem botão);
+- **Atalho** `Alt+Shift+P` para pausar/retomar.
+
+Instalação (a cada Release saem dois zips):
+- **Chrome/Edge**: extraia o zip `chrome`, abra `chrome://extensions`, ative o *Modo do desenvolvedor* →
+  *Carregar sem compactação* → escolha a pasta. Para atualizar, extraia a versão nova por cima da mesma pasta
+  e clique em ↻ na extensão — os dados são mantidos.
+- **Firefox**: `about:debugging` → *Este Firefox* → *Carregar extensão temporária* → escolha o zip `firefox`
+  (extensões não assinadas saem ao fechar o Firefox; para ficar permanente é preciso assinar no addons.mozilla.org).
+
+Os dados da extensão ficam só no navegador e são separados dos dados do celular.
+
 ## Como é compilado
 `.github/workflows/release.yml` roda a cada push (ou manualmente em *Actions → Run workflow*),
-compila o APK release assinado e publica uma Release `v1.0.<número da build>` com o APK anexado.
+compila o APK release assinado, empacota a extensão e publica uma Release `v1.0.<número da build>`
+com o APK e os zips da extensão anexados.

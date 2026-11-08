@@ -1,0 +1,102 @@
+/* Listening Time — visual HUD / cockpit */
+:root {
+  color-scheme: dark;
+  --bg: #07090d;
+  --panel: #0c1118;
+  --panel-2: #111821;
+  --line: #1b2633;
+  --line-hi: #2a3a4d;
+  --text: #e6edf7;
+  --text-2: #8b98ae;
+  --muted: #5b6880;
+  --accent: #3dd6f5;
+  --live: #34d399;
+  --warn: #f5b841;
+  --heat-1: #173a63;
+  --heat-2: #1c5cab;
+  --heat-3: #2a78d6;
+  --heat-4: #5598e7;
+  --heat-5: #9ec5f4;
+  --mono: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(rgba(61, 214, 245, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(61, 214, 245, 0.035) 1px, transparent 1px);
+  background-size: 24px 24px;
+  color: var(--text);
+  font: 14px/1.45 var(--mono);
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; }
+
+/* ---------- moldura HUD: painel com colchetes nos cantos ---------- */
+.hud {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 18px;
+}
+.hud::before, .hud::after {
+  content: ""; position: absolute; width: 12px; height: 12px; pointer-events: none;
+  border-color: var(--hud-c, var(--accent));
+}
+.hud::before { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; }
+.hud::after { bottom: -1px; right: -1px; border-bottom: 2px solid; border-right: 2px solid; }
+
+.label {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--text-2);
+  margin: 0 0 14px;
+}
+.label b { color: var(--accent); font-weight: 600; }
+.label::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+.num { font-variant-numeric: tabular-nums; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.muted { color: var(--muted); }
+.t2 { color: var(--text-2); }
+
+/* ---------- botão de pausa ---------- */
+.pause {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; padding: 12px 16px; cursor: pointer;
+  background: transparent; border: 1px solid var(--line-hi);
+  letter-spacing: .12em; text-transform: uppercase; font-size: 12px; font-weight: 600;
+  transition: border-color .15s, background .15s;
+}
+.pause:hover { border-color: var(--accent); background: rgba(61, 214, 245, .06); }
+.pause.is-paused { background: var(--warn); border-color: var(--warn); color: #1a1205; }
+.pause.is-paused:hover { filter: brightness(1.08); }
+.pause svg { width: 14px; height: 14px; fill: currentColor; }
+
+/* ---------- status ao vivo ---------- */
+.status { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; }
+.status .dot { box-shadow: 0 0 0 3px rgba(255, 255, 255, .04); }
+.status.live { color: var(--live); }
+.status.live .dot { background: var(--live); animation: blink 1.6s infinite; }
+.status.paused { color: var(--warn); }
+.status.paused .dot { background: var(--warn); }
+.status.idle { color: var(--text-2); }
+.status.idle .dot { background: var(--muted); }
+@keyframes blink { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .status.live .dot { animation: none; } }
+
+.clock { font-size: 44px; font-weight: 700; letter-spacing: -.02em; line-height: 1.05; }
+
+/* ---------- tooltip ---------- */
+.tip {
+  position: fixed; z-index: 10; pointer-events: none; min-width: 170px;
+  background: #0f1620; border: 1px solid var(--line-hi); padding: 10px 12px;
+  font-size: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); display: none;
+}
+.tip .tip-h { color: var(--text); font-weight: 600; margin-bottom: 6px; }
+.tip .row { display: flex; align-items: center; gap: 8px; color: var(--text-2); }
+.tip .row span:last-child { margin-left: auto; color: var(--text); }
+
+.sbar { display: flex; gap: 2px; background: var(--panel-2); width: 100%; overflow: hidden; }
+.sbar span { display: block; height: 100%; min-width: 2px; }
+.sbar span:last-child { border-radius: 0 2px 2px 0; }

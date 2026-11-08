@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.Icon
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
@@ -37,6 +38,7 @@ class MediaWatcherService : NotificationListenerService() {
     private var lastSeenPlaying = 0L
     private var carry = 0L
     private var lastNotifUpdate = 0L
+    private var lastNotifKey = ""
     private var notifShowing = false
 
     private val sessionsListener =
@@ -51,6 +53,7 @@ class MediaWatcherService : NotificationListenerService() {
 
     override fun onListenerConnected() {
         connected = true
+        instance = this
         fg = ForegroundDetector(this)
         createChannel()
         val cn = ComponentName(this, MediaWatcherService::class.java)
@@ -80,6 +83,7 @@ class MediaWatcherService : NotificationListenerService() {
         if (!connected) return
         connected = false
         running = false
+        if (instance === this) instance = null
         handler.removeCallbacks(tick)
         runCatching { msm?.removeOnActiveSessionsChangedListener(sessionsListener) }
         endSession()
@@ -101,10 +105,20 @@ class MediaWatcherService : NotificationListenerService() {
         return null
     }
 
-    private fun step() {
+    /** Chamado quando o usuário pausa/retoma: atualiza a notificação na hora. */
+    fun onPauseChanged() {
+        handler.post {
+            lastNotifKey = ""
+            step(countTime = false)
+        }
+    }
+
+    private fun step(countTime: Boolean = true) {
         val now = SystemClock.elapsedRealtime()
-        val delta = (now - lastTick).coerceIn(0, 5000)
-        lastTick = now
+        val delta = if (countTime) (now - lastTick).coerceIn(0, 5000) else 0
+        if (countTime) lastTick = now
+        val paused = PauseState.isPaused(this)
+        livePaused = paused
 
         val pkg = playingPackage()
         if (pkg != null) {
@@ -113,32 +127,39 @@ class MediaWatcherService : NotificationListenerService() {
                 activePkg = pkg
                 sessionSeconds = 0
                 carry = 0
-                lastNotifUpdate = 0
-            } else {
+            } else if (!paused) {
                 carry += delta
             }
-            val wasPaused = now - lastSeenPlaying > 2000
             lastSeenPlaying = now
+            if (paused) carry = 0
             val whole = carry / 1000
             if (whole > 0) {
                 carry -= whole * 1000
                 sessionSeconds += whole
                 Tracker.add(this, pkg, whole)
             }
-            liveApp = StreamingApps.nameOf(pkg)
+            val name = StreamingApps.nameOf(pkg)
+            liveApp = name
             liveBase = now - sessionSeconds * 1000
-            // Atualiza ao começar, ao voltar de uma pausa e a cada 30 s (o cronômetro anda sozinho).
-            if (!notifShowing || wasPaused || now - lastNotifUpdate > 30_000) {
-                showNotification(StreamingApps.nameOf(pkg), playing = true)
-                lastNotifUpdate = now
-            }
+            updateNotification(name, videoPlaying = true, paused = paused)
         } else {
-            if (liveApp != null && notifShowing && now - lastSeenPlaying in 1500..3500) {
-                showNotification(liveApp!!, playing = false) // mostra "pausado"
-            }
             liveApp = null
-            if (activePkg != null && now - lastSeenPlaying >= GRACE_MS) endSession()
+            val last = activePkg
+            if (last != null) {
+                if (now - lastSeenPlaying >= GRACE_MS) endSession()
+                else updateNotification(StreamingApps.nameOf(last), videoPlaying = false, paused = paused)
+            }
         }
+    }
+
+    /** Só recria a notificação quando o estado muda, ou a cada 30 s (o cronômetro anda sozinho). */
+    private fun updateNotification(name: String, videoPlaying: Boolean, paused: Boolean) {
+        val now = SystemClock.elapsedRealtime()
+        val key = "$name|$videoPlaying|$paused"
+        if (notifShowing && key == lastNotifKey && now - lastNotifUpdate < 30_000) return
+        lastNotifKey = key
+        lastNotifUpdate = now
+        showNotification(name, videoPlaying, paused)
     }
 
     private fun endSession() {
@@ -146,6 +167,7 @@ class MediaWatcherService : NotificationListenerService() {
         liveApp = null
         carry = 0
         notifShowing = false
+        lastNotifKey = ""
         getSystemService(NotificationManager::class.java).cancel(NOTIF_ID)
     }
 
@@ -160,7 +182,7 @@ class MediaWatcherService : NotificationListenerService() {
         )
     }
 
-    private fun buildViews(layout: Int, name: String, playing: Boolean, big: Boolean): RemoteViews {
+    private fun buildViews(layout: Int, name: String, videoPlaying: Boolean, paused: Boolean, big: Boolean): RemoteViews {
         val color = StreamingApps.colorOf(name)
         val today = Tracker.todayFor(this, name)
         val month = Tracker.monthFor(this, name)
@@ -168,10 +190,17 @@ class MediaWatcherService : NotificationListenerService() {
             setInt(R.id.accent, "setColorFilter", color)
             setTextViewText(
                 R.id.label,
-                (if (playing) "● ${name.uppercase()}" else "❚❚ ${name.uppercase()} · PAUSADO")
+                when {
+                    paused -> "⏸ ${name.uppercase()} · CONTAGEM PAUSADA"
+                    videoPlaying -> "● ${name.uppercase()}"
+                    else -> "❚❚ ${name.uppercase()} · VÍDEO PAUSADO"
+                }
             )
-            setTextColor(R.id.label, color)
-            setChronometer(R.id.chrono, SystemClock.elapsedRealtime() - sessionSeconds * 1000, null, playing)
+            setTextColor(R.id.label, if (paused) 0xFF8B98AE.toInt() else color)
+            setInt(R.id.accent, "setColorFilter", if (paused) 0xFF5B6880.toInt() else color)
+            setChronometer(
+                R.id.chrono, SystemClock.elapsedRealtime() - sessionSeconds * 1000, null, videoPlaying && !paused
+            )
             setTextViewText(R.id.today, "Hoje ${Tracker.hm(today)}")
             setTextViewText(R.id.month, "Mês ${Tracker.hm(month)}")
             if (big) {
@@ -189,7 +218,7 @@ class MediaWatcherService : NotificationListenerService() {
         }
     }
 
-    private fun showNotification(name: String, playing: Boolean) {
+    private fun showNotification(name: String, videoPlaying: Boolean, paused: Boolean) {
         val pi = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
@@ -199,8 +228,9 @@ class MediaWatcherService : NotificationListenerService() {
             .setColor(StreamingApps.colorOf(name))
             .setSubText(name)
             .setStyle(Notification.DecoratedCustomViewStyle())
-            .setCustomContentView(buildViews(R.layout.notif_small, name, playing, false))
-            .setCustomBigContentView(buildViews(R.layout.notif_big, name, playing, true))
+            .setCustomContentView(buildViews(R.layout.notif_small, name, videoPlaying, paused, false))
+            .setCustomBigContentView(buildViews(R.layout.notif_big, name, videoPlaying, paused, true))
+            .addAction(pauseAction(paused))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
@@ -211,6 +241,20 @@ class MediaWatcherService : NotificationListenerService() {
             getSystemService(NotificationManager::class.java).notify(NOTIF_ID, n)
             notifShowing = true
         }
+    }
+
+    private fun pauseAction(paused: Boolean): Notification.Action {
+        val action = if (paused) PauseReceiver.ACTION_RESUME else PauseReceiver.ACTION_PAUSE
+        val pi = PendingIntent.getBroadcast(
+            this, if (paused) 2 else 1,
+            Intent(action).setPackage(packageName).setClass(this, PauseReceiver::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        return Notification.Action.Builder(
+            Icon.createWithResource(this, if (paused) R.drawable.ic_play else R.drawable.ic_pause),
+            if (paused) "▶ Retomar contagem" else "⏸ Pausar contagem",
+            pi
+        ).build()
     }
 
     companion object {
@@ -224,6 +268,9 @@ class MediaWatcherService : NotificationListenerService() {
         @Volatile var liveApp: String? = null
         /** Base do cronômetro em elapsedRealtime. */
         @Volatile var liveBase: Long = 0L
+        /** Contagem pausada pelo usuário. */
+        @Volatile var livePaused: Boolean = false
+        @Volatile var instance: MediaWatcherService? = null
 
         fun isEnabled(ctx: Context): Boolean {
             val flat = android.provider.Settings.Secure.getString(

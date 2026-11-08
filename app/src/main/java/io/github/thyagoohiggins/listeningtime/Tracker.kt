@@ -60,6 +60,7 @@ object Tracker {
         val monthByApp = mutableMapOf<String, Long>()
         val allByApp = mutableMapOf<String, Long>()
         val todayByApp = mutableMapOf<String, Long>()
+        /** Dias (AAAA-MM-DD) com algum uso, em todo o histórico. */
         val allDays = mutableSetOf<String>()
 
         init {
@@ -85,6 +86,24 @@ object Tracker {
         val activeDaysAll: Int get() = allDays.size
         val bestDay: Int? get() = (1..daysInMonth).maxByOrNull { dayTotal(it) }?.takeIf { dayTotal(it) > 0 }
         val maxDayTotal: Long get() = (1..daysInMonth).maxOfOrNull { dayTotal(it) } ?: 0L
+
+        /** Dias seguidos com uso até hoje (se hoje ainda não teve uso, conta até ontem). */
+        val streak: Int get() {
+            val c = Calendar.getInstance()
+            val f = fmt()
+            if (f.format(c.time) !in allDays) c.add(Calendar.DAY_OF_MONTH, -1)
+            var n = 0
+            while (f.format(c.time) in allDays) { n++; c.add(Calendar.DAY_OF_MONTH, -1) }
+            return n
+        }
+
+        /** Uso em cada um dos últimos 7 dias (mais antigo primeiro). */
+        val last7: List<Boolean> get() {
+            val f = fmt()
+            return (6 downTo 0).map { i ->
+                val c = Calendar.getInstance(); c.add(Calendar.DAY_OF_MONTH, -i); f.format(c.time) in allDays
+            }
+        }
     }
 
     // ---- formatação ----
@@ -96,6 +115,15 @@ object Tracker {
         val s = seconds % 60
         return if (h > 0) String.format(Locale.US, "%d:%02d:%02d", h, m, s)
         else String.format(Locale.US, "%02d:%02d", m, s)
+    }
+
+    /** Duração curtíssima para células: 2h14, 45m */
+    fun tiny(seconds: Long): String {
+        if (seconds <= 0) return ""
+        if (seconds < 60) return "<1m"
+        val h = seconds / 3600
+        val m = (seconds % 3600) / 60
+        return if (h > 0) String.format(Locale.US, "%dh%02d", h, m) else "${m}m"
     }
 
     /** Duração compacta: 2h 05m, 45m, <1m, 0m */
